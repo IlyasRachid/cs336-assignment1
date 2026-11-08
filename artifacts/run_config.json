@@ -1,0 +1,68 @@
+{
+    "sanity_cpu_tiny": {
+        "model_config": {
+            "vocab_size": 10000,
+            "context_length": 32,
+            "num_layers": 1,
+            "d_model": 64,
+            "num_heads": 4,
+            "d_ff": 128,
+            "rope_theta": 500000.0
+        },
+        "train_config": {
+            "batch_size": 2,
+            "lr_max": 0.001,
+            "lr_min": 0.0001,
+            "beta1": 0.9,
+            "beta2": 0.95,
+            "eps": 1e-08,
+            "warmup_iters": 2,
+            "cosine_iters": 10,
+            "weight_decay": 0.1,
+            "grad_clip": 1.0,
+            "eval_interval": 5,
+            "ckpt_interval": 5,
+            "train_path": "artifacts/tokens/tinystories_train.bin",
+            "valid_path": "artifacts/tokens/tinystories_valid.bin",
+            "ckpt_path": null,
+            "log_path": null,
+            "run_name": "sanity_cpu_tiny",
+            "use_wandb": true,
+            "wandb_project": "cs336-a1",
+            "seed": 0
+        }
+    },
+    "tinyStories_exp_1": {
+        "model_config": {
+            "vocab_size": 10000,
+            "context_length": 256,
+            "num_layers": 4,
+            "d_model": 512,
+            "num_heads":16,
+            "d_ff": 1344,
+            "rope_theta": 10000.0
+        },
+        "train_config": {
+            "batch_size": 128,
+            "lr_max": 0.001,
+            "lr_min": 0.0001,
+            "beta1": 0.9,
+            "beta2": 0.95,
+            "eps": 1e-08,
+            "warmup_iters": 50,
+            "cosine_iters": 1200,
+            "weight_decay": 0.1,
+            "grad_clip": 1.0,
+            "eval_interval": 250,
+            "ckpt_interval": 600,
+            "train_path": "artifacts/tokens/tinystories_train.bin",
+            "valid_path": "artifacts/tokens/tinystories_valid.bin",
+            "ckpt_path": null,
+            "log_path": null,
+            "run_name": "tinyStories_exp_1",
+            "use_wandb": true,
+            "wandb_project": "cs336-a1",
+            "seed": 0
+        }
+    }
+}
