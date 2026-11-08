@@ -2,7 +2,6 @@ import numpy as np
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
-import os
 import time
 
 from cs336_basics.tokenization.tokenization import Tokenizer
@@ -21,6 +20,15 @@ def _encode_range(path, start, end):
     return np.array(_tok.encode(text), dtype=np.uint16)
 
 def encode_file(path, vocab_path, merges_path, special_tokens, out_path, num_workers=32):
+    if num_workers < 1:
+        raise ValueError("num_workers must be positive")
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    if num_workers == 1:
+        _init_worker(vocab_path, merges_path, special_tokens)
+        arr = _encode_range(path, 0, Path(path).stat().st_size)
+        arr.tofile(out_path)
+        return len(arr)
+
     bounds = split_chunks(Path(path), special_tokens[0].encode("utf-8"), 8 * num_workers)
     with ProcessPoolExecutor(num_workers, initializer=_init_worker,
                              initargs=(vocab_path, merges_path, special_tokens)) as ex:
@@ -32,37 +40,27 @@ def encode_file(path, vocab_path, merges_path, special_tokens, out_path, num_wor
                 arr = f.result()
                 arr.tofile(out)
                 total += len(arr)
-    
     return total
 
 
-def main():
 
-    text_path = "/storage/Irachid/assignments/assignment1-basics-main/data/TinyStoriesV2-GPT4-train.txt"
-    vocab_path = "/storage/Irachid/assignments/assignment1-basics-main/cs336_basics/vocab_tinyStories.pkl"
-    merges_path = "/storage/Irachid/assignments/assignment1-basics-main/cs336_basics/merges_tinyStories.pkl"
+def main(argv=None):
+    import argparse
+    from cs336_basics.paths import DATA, TOKENIZERS, TOKENS
 
-    out_path = "/storage/Irachid/assignments/assignment1-basics-main/cs336_basics/token_ids/tinyStories_train_ids.bin"
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
-    special_tokens = ["<|endoftext|>"]
-
-    num_workers = 32
-
+    parser = argparse.ArgumentParser(description="Encode a corpus as uint16 token IDs.")
+    parser.add_argument("--input", type=Path, default=DATA / "TinyStoriesV2-GPT4-train.txt")
+    parser.add_argument("--tokenizer-dir", type=Path, default=TOKENIZERS / "tinystories_10k")
+    parser.add_argument("--output", type=Path, default=TOKENS / "tinystories_train.bin")
+    parser.add_argument("--num-workers", type=int, default=32)
+    args = parser.parse_args(argv)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
-    total = encode_file(text_path, vocab_path, merges_path, special_tokens, out_path, num_workers)
+    total = encode_file(args.input, args.tokenizer_dir / "vocab.pkl", args.tokenizer_dir / "merges.pkl",
+                        ["<|endoftext|>"], args.output, args.num_workers)
     dt = time.perf_counter() - t0
+    print(f"{total} tokens in {dt:.2f}s")
 
-    nbytes = os.path.getsize(text_path)
-    print(f"{total} tokens, {nbytes / total:.2f} bytes/token, {nbytes / dt / 1e6:.1f} MB/s")
 
-    ids = np.memmap(out_path, dtype=np.uint16, mode="r")
-    assert len(ids) == total
-    print("max id:", ids.max())
-
-    tok = Tokenizer.from_files(vocab_path, merges_path, special_tokens)
-    print(tok.decode(ids[:200].tolist()))
-    
-
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

@@ -20,12 +20,12 @@ for name, p in model.named_parameters():
 
 
 def group_of(name):
-    parts = name.slit(".") # layers.1.ffn.w3.weight, ln_final.weight...
-    return "".join(parts[:-1])
+    parts = name.split(".") # layers.1.ffn.w3.weight, ln_final.weight...
+    return ".".join(parts[:-1]) or name
 
 @torch.no_grad()
 def param_stats(model):
-    g2, w2 = defaultdict(), defaultdict()
+    g2, w2 = defaultdict(float), defaultdict(float)
     for name, p in model.named_parameters():
         k = group_of(name)
         w2[k] += p.pow(2).sum().item()

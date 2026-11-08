@@ -7,6 +7,7 @@ import time
 import pickle
 import resource
 import subprocess
+import tempfile
 from tqdm import tqdm
 
 
@@ -16,24 +17,24 @@ def split_chunks(input_path: Path, special_token: bytes, num_chunks: int) -> lis
         file.seek(0, os.SEEK_END)
         file_size = file.tell()
         file.seek(0)
-    
+
         mini_chunk_size = 4096
-        
+
         chunk_size = file_size // num_chunks
-        
+
         chunk_boundaries = [i * chunk_size for i in range(num_chunks + 1)]
         chunk_boundaries[-1] = file_size
-        
+
         for bi in range(1, len(chunk_boundaries) - 1):
             initial_position = chunk_boundaries[bi]
             file.seek(initial_position)
             while True:
-                mini_chunk = file.read(mini_chunk_size)  
-                
+                mini_chunk = file.read(mini_chunk_size)
+
                 if mini_chunk == b'':
                     chunk_boundaries[bi] = file_size
                     break
-            
+
                 idx = mini_chunk.find(special_token)
                 if idx != -1:
                     chunk_boundaries[bi] = initial_position + idx
@@ -50,15 +51,15 @@ def pretokenize_chunk(path: Path, start: int, end: int, pattern, split_pat):
     counts = Counter()
     for piece in split_pat.split(text):
         counts.update(m.group() for m in pattern.finditer(piece))
-        
+
     return {tok.encode("utf-8"): n for tok, n in counts.items()}
-    
+
 
 def train_bpe(pre_tokens, vocab, vocab_size):
     words = [list(w) for w in pre_tokens]
     freqs = list(pre_tokens.values())
     merges = []
-    
+
     pair_counts = defaultdict(int)
     pair_words = defaultdict(set)
 
@@ -73,9 +74,9 @@ def train_bpe(pre_tokens, vocab, vocab_size):
     #for _ in range(iterations):
         if not pair_counts:
             break
-        
+
         best = max(pair_counts, key=lambda pair: (pair_counts[pair], vocab[pair[0]], vocab[pair[1]]))
-        
+
         a, b = best
         merges.append((vocab[a], vocab[b]))
         new_id = len(vocab)
@@ -91,7 +92,7 @@ def train_bpe(pre_tokens, vocab, vocab_size):
                 else:
                     new.append(old[i])
                     i += 1
-                    
+
             if len(new) == len(old):
                 continue
 
@@ -104,7 +105,7 @@ def train_bpe(pre_tokens, vocab, vocab_size):
                 pair_counts[p] += f
                 pair_words[p].add(idx)
             words[idx] = new
-            
+
             for p in set(zip(old, old[1:])) - set(zip(new, new[1:])):
                 pair_words[p].discard(idx)
                 if not pair_words[p]:
@@ -113,15 +114,27 @@ def train_bpe(pre_tokens, vocab, vocab_size):
 
         pair_words.pop(best, None)
         pair_counts.pop(best, None)
-    
+
     return vocab, merges
 
 
-import subprocess
-import tempfile
-from tqdm import tqdm
+def get_bpe_binary() -> Path:
+    """Build the C++ trainer when missing or older than its source."""
+    from cs336_basics.paths import ROOT
+
+    source = Path(__file__).with_name("bpe.cpp")
+    binary = ROOT / "artifacts" / "bin" / "bpe"
+    if not binary.exists() or binary.stat().st_mtime < source.stat().st_mtime:
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=binary.parent) as build_dir:
+            built = Path(build_dir) / "bpe"
+            subprocess.run(["g++", "-O3", "-std=c++20", str(source), "-o", str(built)], check=True)
+            built.replace(binary)
+    return binary
+
 
 def train_bpe_cpp(pre_tokens, vocab, vocab_size, special_tokens):
+    binary = get_bpe_binary()
     num_merges = vocab_size - len(vocab) - len(special_tokens)
 
     with tempfile.TemporaryFile(mode="w+t") as inp, \
@@ -144,7 +157,7 @@ def train_bpe_cpp(pre_tokens, vocab, vocab_size, special_tokens):
 
         # Launch C++ trainer
         with subprocess.Popen(
-            ["./bpe"],
+            [str(binary)],
             stdin=inp,
             stdout=out,
             stderr=subprocess.PIPE,
@@ -180,9 +193,11 @@ def train_bpe_cpp(pre_tokens, vocab, vocab_size, special_tokens):
 
     return vocab, merges
 
-#--------------------------------------------------------------------------------------------------------------     
+#--------------------------------------------------------------------------------------------------------------
 
 def tokenize(input_path: str, vocab_size: int, special_tokens: list[str], num_workers: int = 8):
+    if num_workers < 1:
+        raise ValueError("num_workers must be positive")
     path = Path(input_path)
     assert path.is_file(), "file doesn't exist"
 
@@ -190,51 +205,61 @@ def tokenize(input_path: str, vocab_size: int, special_tokens: list[str], num_wo
     for i in range(256):
         vocab[i] = bytes([i])
 
-    
+
     assert vocab_size >= len(special_tokens) + 256, "max_vocab_size too low"
-    
+
     PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
     split_pat = re.compile("|".join(re.escape(t) for t in special_tokens))
-    
+
     num_chunks = 4 * num_workers
-    
+
     chunks = split_chunks(path, "<|endoftext|>".encode("utf-8"), num_chunks)
     pre_tokens = Counter()
 
-    with ProcessPoolExecutor(max_workers=num_workers) as ex:
-        futures = [
-            ex.submit(pretokenize_chunk, path, chunks[k], chunks[k+1], PAT, split_pat) for k in range(len(chunks) - 1)
-        ]
-        for fut in tqdm(as_completed(futures), total=len(futures), desc="pretokenize"):
-            pre_tokens.update(fut.result())
+    if num_workers == 1:
+        pre_tokens.update(pretokenize_chunk(path, 0, path.stat().st_size, PAT, split_pat))
+    else:
+        with ProcessPoolExecutor(max_workers=num_workers) as ex:
+            futures = [
+                ex.submit(pretokenize_chunk, path, chunks[k], chunks[k+1], PAT, split_pat) for k in range(len(chunks) - 1)
+            ]
+            for fut in tqdm(as_completed(futures), total=len(futures), desc="pretokenize"):
+                pre_tokens.update(fut.result())
 
-    #vocab, merges = train_bpe(pre_tokens, vocab, vocab_size)
-    vocab, merges = train_bpe_cpp(pre_tokens, vocab, vocab_size)
+    vocab, merges = train_bpe_cpp(pre_tokens, vocab, vocab_size, special_tokens)
 
     for tok in special_tokens:
-            vocab[len(vocab)] = tok.encode("utf-8")
-    
+        vocab[len(vocab)] = tok.encode("utf-8")
+
     return vocab, merges
 
 
 #--------------------------------------------------------------------------------------------------------------
 
-def main():
-    num_workers = 16
-    t0 = time.perf_counter()
-    vocab, merges = tokenize("/storage/Irachid/assignments/assignment1-basics-main/data/owt_train.txt", 32000, ["<|endoftext|>"], num_workers)
-    total = time.perf_counter() - t0
+def main(argv=None):
+    import argparse
+    from cs336_basics.paths import DATA, TOKENIZERS
 
-    with open("vocab_owl.pkl", "wb") as f: pickle.dump(vocab, f)
-    with open("merges_owl.pkl", "wb") as f: pickle.dump(merges, f)
+    parser = argparse.ArgumentParser(description="Train a byte-level BPE tokenizer.")
+    parser.add_argument("--input", type=Path, default=DATA / "owt_train.txt")
+    parser.add_argument("--output-dir", type=Path, default=TOKENIZERS / "owt_32k")
+    parser.add_argument("--vocab-size", type=int, default=32000)
+    parser.add_argument("--num-workers", type=int, default=16)
+    args = parser.parse_args(argv)
+
+    t0 = time.perf_counter()
+    vocab, merges = tokenize(args.input, args.vocab_size, ["<|endoftext|>"], args.num_workers)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    with (args.output_dir / "vocab.pkl").open("wb") as f:
+        pickle.dump(vocab, f)
+    with (args.output_dir / "merges.pkl").open("wb") as f:
+        pickle.dump(merges, f)
 
     longest = max(vocab.values(), key=len)
-    print(f"total: {total:.1f}s")
+    print(f"total: {time.perf_counter() - t0:.1f}s")
     print(f"peak RSS main: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1e6:.2f} GB")
-    print(f"peak RSS largest worker: {resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss/1e6:.2f} GB")
     print(len(longest), longest)
-    
+
 
 if __name__ == "__main__":
     main()
-    

@@ -7,6 +7,29 @@
 
 Run commands from the repository root.
 
+## Tokenizers and token files
+
+The implementations live in `cs336_basics`; the scripts are command-line entry points.
+BPE training requires `g++` with C++20 support. The trainer builds automatically into
+`artifacts/bin/bpe` on first use and rebuilds when its source changes. Before timing
+BPE training or running the assignment's speed test, build it once:
+
+```bash
+uv run python -c 'from cs336_basics.tokenization.tokenizer import get_bpe_binary; get_bpe_binary()'
+```
+
+Train a TinyStories tokenizer and prepare the training and validation files:
+
+```bash
+uv run python -m scripts.tokenizer --input data/TinyStoriesV2-GPT4-train.txt --output-dir artifacts/tokenizers/tinystories_10k --vocab-size 10000
+uv run python -m scripts.prepare_tokens
+uv run python -m scripts.prepare_tokens --input data/TinyStoriesV2-GPT4-valid.txt --output artifacts/tokens/tinystories_valid.bin
+```
+
+Tokenizer training writes `vocab.pkl` and `merges.pkl`. Use `--tokenizer-dir` when
+encoding or generating with a tokenizer other than the default TinyStories tokenizer.
+Both preprocessing commands accept `--num-workers`; use `1` for a small local check.
+
 ## Benchmark a GPU
 
 The benchmark creates synthetic token batches on the GPU, so it does not need the TinyStories token files. It uses the selected config's model dimensions and batch size.

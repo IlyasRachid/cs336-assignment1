@@ -26,18 +26,18 @@ class Tokenizer():
             re.compile("(" + "|".join(map(re.escape, tokens)) + ")")
             if tokens else None)
 
-    
+
     @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens=None):
         with open(vocab_filepath, 'rb') as f:
             vocabulary = pickle.load(f)
-        
+
         with open(merges_filepath, 'rb') as f:
             merges = pickle.load(f)
 
         return cls(vocabulary, merges, special_tokens)
 
-    
+
     def process_chunk(self, chunk):
         all_ids = []
 
@@ -52,7 +52,7 @@ class Tokenizer():
             hit = self.cache.get(key)
             if hit is not None:
                 all_ids.extend(hit)
-                continue 
+                continue
 
             ids = [self.bytes_ids[bytes([b])] for b in key.encode("utf-8")]
             while len(ids) > 1:
@@ -92,12 +92,12 @@ class Tokenizer():
     def encode(self, text: str):
         chunks = self.split_pattern.split(text) if self.split_pattern else [text]
         return [
-            token_id 
+            token_id
             for chunk in chunks
             for token_id in self.process_chunk(chunk)
         ]
-        
-    
+
+
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         for text in iterable:
             yield from self.encode(text)
@@ -115,24 +115,23 @@ def compression_ratio(tokenizer, documents):
 
     return num_bytes / num_tokens
 
-def main():
-    text_path = "/storage/Irachid/assignments/assignment1-basics-main/data/owt_valid.txt"
-    vocab_path = "/storage/Irachid/assignments/assignment1-basics-main/cs336_basics/vocab_owl.pkl"
-    merges_path = "/storage/Irachid/assignments/assignment1-basics-main/cs336_basics/merges_owl.pkl"
+def main(argv=None):
+    import argparse
+    from cs336_basics.paths import DATA, TOKENIZERS
 
-    num_workers = 16
-    
-    with open(text_path, "r") as f:
+    parser = argparse.ArgumentParser(description="Check tokenizer round-trip and compression.")
+    parser.add_argument("--input", default=DATA / "owt_valid.txt")
+    parser.add_argument("--tokenizer-dir", type=str, default=str(TOKENIZERS / "owt_32k"))
+    args = parser.parse_args(argv)
+    from pathlib import Path
+    tokenizer_dir = Path(args.tokenizer_dir)
+    with open(args.input, encoding="utf-8") as f:
         text = "".join(islice(f, 100))
-    
-    tokenizer = Tokenizer.from_files(vocab_path, merges_path)
-    encoded_ids = tokenizer.encode(text, num_workers)
-    decoded = tokenizer.decode(encoded_ids)
-    comp_ratio = compression_ratio(tokenizer, text)
+    tokenizer = Tokenizer.from_files(tokenizer_dir / "vocab.pkl", tokenizer_dir / "merges.pkl", ["<|endoftext|>"])
+    encoded_ids = tokenizer.encode(text)
+    print(f"Compression ratio: {compression_ratio(tokenizer, text):.2f}")
+    print(tokenizer.decode(encoded_ids) == text)
 
-    print(f"Compression ratio: {comp_ratio:.2f}")
-    print(decoded == text)
-    
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

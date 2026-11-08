@@ -3,9 +3,10 @@ import subprocess
 import time
 import statistics
 
-from tokenizer import train_bpe
+from cs336_basics.tokenization.tokenizer import get_bpe_binary, train_bpe
 
 def test_randomized(trials=100):
+    binary = get_bpe_binary()
     rng = random.Random(42)
 
     for trial in range(trials):
@@ -31,7 +32,7 @@ def test_randomized(trials=100):
             )
 
         result = subprocess.run(
-            ["./bpe"],
+            [str(binary)],
             input="\n".join(lines) + "\n",
             text=True,
             capture_output=True,
@@ -57,6 +58,7 @@ def test_randomized(trials=100):
 
 
 def benchmark(n=10_000, num_merges=1_000, repetitions=5):
+    binary = get_bpe_binary()
     rng = random.Random(42)
     pre_tokens = {}
 
@@ -80,16 +82,17 @@ def benchmark(n=10_000, num_merges=1_000, repetitions=5):
     cpp_times = []
 
     for _ in range(repetitions):
-        # C++ benchmark
+        # Include subprocess and serialization overhead in the C++ timing.
+        start = time.perf_counter()
         result = subprocess.run(
-            ["./bpe"],
+            [str(binary)],
             input=cpp_input,
             text=True,
             capture_output=True,
             check=True,
         )
 
-        cpp_times.append(float(result.stderr.strip()))
+        cpp_times.append(time.perf_counter() - start)
 
         # Python benchmark
         vocab = {i: bytes([i]) for i in range(256)}
