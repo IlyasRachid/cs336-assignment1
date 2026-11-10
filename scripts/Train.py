@@ -168,7 +168,7 @@ def main():
                     log_file.write(json.dumps(rec_train) + "\n")
                     log_file.flush()
 
-                if it % train_cfg.eval_interval == 0:
+                if it % train_cfg.eval_interval == 0 or it == train_cfg.cosine_iters - 1:
                     eval_loss = evaluate(
                         model,
                         valid_data,

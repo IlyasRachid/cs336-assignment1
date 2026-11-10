@@ -32,7 +32,7 @@
             "seed": 0
         }
     },
-    "tinyStories_exp_1": {
+    "tinystories_lr_1e-3_seed0": {
         "model_config": {
             "vocab_size": 10000,
             "context_length": 256,
@@ -44,22 +44,22 @@
         },
         "train_config": {
             "batch_size": 128,
-            "lr_max": 0.001,
-            "lr_min": 0.0001,
+            "lr_max": 1e-3,
+            "lr_min": 1e-4,
             "beta1": 0.9,
             "beta2": 0.95,
             "eps": 1e-08,
-            "warmup_iters": 50,
-            "cosine_iters": 1200,
+            "warmup_iters": 200,
+            "cosine_iters": 10000,
             "weight_decay": 0.1,
             "grad_clip": 1.0,
-            "eval_interval": 250,
+            "eval_interval": 500,
             "ckpt_interval": 600,
             "train_path": "artifacts/tokens/tinystories_train.bin",
             "valid_path": "artifacts/tokens/tinystories_valid.bin",
             "ckpt_path": null,
             "log_path": null,
-            "run_name": "tinyStories_exp_1",
+            "run_name": "tinystories_lr_1e-3_seed0",
             "use_wandb": true,
             "wandb_project": "cs336-a1",
             "seed": 0
