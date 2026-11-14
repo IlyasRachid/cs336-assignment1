@@ -50,9 +50,43 @@ uv run python -m scripts.Train --config sanity_cpu_tiny
 
 For the larger experiment, select `tinyStories_exp_1`. To continue a run, use the same config and preserve its checkpoint and W&B run metadata. For a fresh run, add a new entry in `artifacts/run_config.json` with a new `run_name`.
 
-## Plot and generate
+## Plot runs
+
+Compare one metric across multiple runs. By default, the plotter reads each
+run's local `runs/<run_name>/train_log.jsonl` file:
 
 ```bash
-uv run python scripts/log_handler.py --run_name sanity_cpu_tiny
+uv run python -m scripts.plot --runs sanity_cpu_tiny tinyStories_exp_1
+```
+
+The default metric is `loss`, which includes both training and validation
+curves. Choose a different logged metric with `--axis`; for example, use a
+parameter's exact key to compare its weight or gradient norm:
+
+```bash
+uv run python -m scripts.plot --runs run_lr_1e-3 run_lr_3e-3 --axis gradnorm/layers.0.attn.q_proj
+uv run python -m scripts.plot --runs run_lr_1e-3 run_lr_3e-3 --axis weightnorm/layers.0.attn.q_proj --x-axis time
+```
+
+Use `--x-axis it` (the default) to plot against training steps, or
+`--x-axis time` for elapsed seconds. The image is saved under `plots/` by
+default. Set `--out path/to/plot.png` to choose a different output path.
+
+To fetch history from W&B instead of local JSONL files, add `--wandb`:
+
+```bash
+uv run python -m scripts.plot --runs run_lr_1e-3 run_lr_3e-3 --wandb
+```
+
+W&B mode uses the run ID, entity, and project saved in each run's
+`runs/<run_name>/wandb_run.json` and `config.json`. The run must have been
+logged with W&B from this project so those files exist. Install `wandb` and
+`pandas` in the environment before using `--wandb`. W&B validation history
+currently contains loss only; gradient and weight norm curves are available
+for training records.
+
+## Generate
+
+```bash
 uv run python scripts/generate.py --run_name sanity_cpu_tiny
 ```
